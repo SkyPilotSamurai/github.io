@@ -1103,4 +1103,73 @@ document.getElementById('ruleCombo').addEventListener('change', e => { state.rul
 document.getElementById('ruleElemental').addEventListener('change', e => {
   state.rules.elemental = e.target.checked;
   // If turning the rule on mid-game and no tiles have elements yet, assign
-  // some now — only to cells that are still empty
+  // some now — only to cells that are still empty, so cards already on the
+  // board don't retroactively gain a tile bonus they weren't placed for.
+  if (e.target.checked && state.boardElements.every(el => el === null)) {
+    const emptyIndices = state.board
+      .map((cell, i) => (cell === null ? i : -1))
+      .filter(i => i !== -1);
+    state.boardElements = generateBoardElements(emptyIndices);
+  }
+  renderBoard();
+});
+document.getElementById('resetBtn').addEventListener('click', initGame);
+document.getElementById('overlayReset').addEventListener('click', initGame);
+
+// Element Alignment: 0/10/20...100%, defaulting to 80%.
+const alignmentSelect = document.getElementById('alignmentSelect');
+for (let v = 0; v <= 100; v += 10) {
+  const opt = document.createElement('option');
+  opt.value = v;
+  opt.textContent = v + '%';
+  if (v === 80) opt.selected = true;
+  alignmentSelect.appendChild(opt);
+}
+alignmentSelect.addEventListener('change', () => {
+  state.elementAlignment = Number(alignmentSelect.value);
+});
+
+initGame();
+initMusicPlayer();
+initSfxControls();
+
+// ---------------------------------------------------------------
+// CARD NUMBER LAYOUT (OG classic corner cluster vs Adjusted edges)
+// ---------------------------------------------------------------
+const layoutSelect = document.getElementById('layoutSelect');
+layoutSelect.addEventListener('change', () => {
+  document.body.classList.remove('layout-og', 'layout-adjusted');
+  document.body.classList.add('layout-' + layoutSelect.value);
+});
+
+// ---------------------------------------------------------------
+// CARD/BOARD SHAPE (Natural = 1.25x taller than square, default;
+// Square = base square dimensions)
+// ---------------------------------------------------------------
+const shapeSelect = document.getElementById('shapeSelect');
+shapeSelect.addEventListener('change', () => {
+  document.body.classList.remove('shape-natural', 'shape-square');
+  document.body.classList.add('shape-' + shapeSelect.value);
+});
+
+// ---------------------------------------------------------------
+// WEBSITE BACKGROUND (found in Backgrounds/ folder)
+// ---------------------------------------------------------------
+const bgSelect = document.getElementById('bgSelect');
+bgSelect.addEventListener('change', () => {
+  const val = bgSelect.value === 'none' ? 'none' : `url('${bgSelect.value}')`;
+  document.body.style.setProperty('--bg-image', val);
+});
+
+// ---------------------------------------------------------------
+// HAND STYLE (Default = spaced list; Stack = ~50% overlapping cards,
+// hovered card comes to front). Only affects the hand, not the board.
+// ---------------------------------------------------------------
+const handStyleSelect = document.getElementById('handStyleSelect');
+const handContainers = [document.getElementById('handP1'), document.getElementById('handP2')];
+handStyleSelect.addEventListener('change', () => {
+  handContainers.forEach(el => el.classList.toggle('stack', handStyleSelect.value === 'stack'));
+});
+</script>
+</body>
+</html>
