@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Triple Triad</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0f1420;
+    color: #e6e6e6;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+    position: relative;
+    --bg-image: url('Backgrounds/Triple Triad.png');
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: var(--bg-image);
+    background-size: cover;
+    background-position: center;
+    opacity: 0.25;
+    z-index: -1;
+    pointer-events: none;
+  }
+  h1 { margin: 6px 0 15px; font-size: 30px; letter-spacing: 1.5px; color: #f0d98c; }
+  .board-col {
+    position: relative;
+  }
+  #topbar {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 432px;
+    font-size: 30px;
+    font-weight: bold;
+    padding: 4px 2px;
+  }
+  #scoreP1 { color: #3a8fe6; }
+  #scoreP2 { color: #ff4fa3; }
+  #turnIndicator { font-size: 23px; color: #ccc; font-weight: normal; }
+  #rules {
+    display: flex;
+    gap: 21px;
+    align-items: center;
+    font-size: 20px;
+    color: #aaa;
+    margin: 9px 0 6px;
+  }
+  #rules button {
+    background: #2d3748;
+    color: #eee;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    padding: 6px 15px;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  #rules button:hover { background: #3a465c; }
+  #musicBar {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 18px;
+    color: #aaa;
+    margin: 2px 0 12px;
+  }
+  #musicBar select {
+    background: #2d3748;
+    color: #eee;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 16px;
+  }
+  #musicBar button {
+    background: #2d3748;
+    color: #eee;
+    border: 1px solid #4a5568;
+    border-radius: 6px;
+    padding: 6px 15px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+  #musicBar button:hover { background: #3a465c; }
+  .game-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin: 20px 0;
+  }
+  .hand {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    justify-content: center;
+    min-width: 129px;
+    height: 705px;
+  }
+  /* Stack hand style: cards overlap ~50%, hovered card comes to the front */
+  .hand.stack { gap: 0; }
+  .hand.stack .card {
+    margin-top: -49.02px;
+    position: relative;
+    /* The outer box no longer catches hover/clicks itself — an inner
+       .hit-zone does that instead, so the exact visual overlap band (38%)
+       can be routed to the covered card behind it instead of the card
+       currently sitting in front. */
+    pointer-events: none;
+  }
+  .hand.stack .card:first-child { margin-top: 0; }
+  .hand.stack .card .hit-zone {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  /* Each card's own hit-zone is its top (100% - overlap%) = 62%, matching
+     the actual visual overlap (38%) exactly — no arbitrary split. Its own
+     bottom 38% (the band the next card visually covers) is left unclaimed,
+     so hovering there falls through to the card in front. The last card has
+     nothing covering it, so it's fully hoverable. */
+  .hand.stack .card:not(:last-child) .hit-zone { height: 62%; }
+  .hand.stack .card:last-child .hit-zone { height: 100%; }
+  /* Paint order: later cards in the stack sit visually on top. */
+  .hand.stack .card:nth-child(1) { z-index: 1; }
+  .hand.stack .card:nth-child(2) { z-index: 2; }
+  .hand.stack .card:nth-child(3) { z-index: 3; }
+  .hand.stack .card:nth-child(4) { z-index: 4; }
+  .hand.stack .card:nth-child(5) { z-index: 5; }
+  .hand.stack .card.selected { z-index: 60; }
+  /* Needs to match the specificity of the nth-child rules above (both are
+     .hand.stack .card + one more selector) so this reliably wins over them
+     regardless of declaration order. */
+  .hand.stack .card:hover { z-index: 50; }
+  /* Flat mode has no nth-child z-index competing, so a lower-specificity
+     rule is enough here — without it, a hovered card's name label (which
+     overflows below its own box) paints underneath the next card in DOM
+     order, since plain document flow paints later siblings on top. */
+  .hand .card:hover { z-index: 50; }
+  /* The slide-toward-board effect moves only the inner visual layer, never
+     the outer .card box itself — that box is what's being hover-tested and
+     must stay put, otherwise moving it out from under the cursor causes a
+     hover flicker loop with the card behind it. */
+  #handP1 .card:not(.selected):hover .card-inner,
+  #handP1 .card.selected .card-inner { transform: translateX(24px); }
+  #handP2 .card:not(.selected):hover .card-inner,
+  #handP2 .card.selected .card-inner { transform: translateX(-24px); }
+  body.shape-natural .hand.stack .card { margin-top: -58.824px; }
+  body.shape-natural .hand.stack .card:first-child { margin-top: 0; }
+  .card {
+    width: 129px;
+    height: 129px;
+    border-radius: 0;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .card-inner {
+    position: absolute;
+    inset: 0;
+    border-radius: 0;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  /* Safety net: the toward-board slide only applies in the hand (P1/P2),
+     never to placed board cards. */
+  #board .card-inner {
+    transform: none !important;
+  }
+  /* Natural shape (default): card + board get 1.2x taller than the square base. */
+  body.shape-natural .card { height: 154.8px; }
+  body.shape-natural .hand { height: 822px; }
+  body.shape-natural #board {
+    grid-template-rows: repeat(3, 165.6px);
+    background-size: 543px 612px;
+  }
+  .card.blue .card-inner { background: radial-gradient(circle at 50% 40%, #3a7bd5, #163a70); }
+  .card.red  .card-inner { background: radial-gradient(circle at 50% 40%, #ff5fae, #7a1145); }
+  .card.disabled { opacity: 0.45; cursor: default; }
+  .card.selected { transform: translateY(-15px); }
+  .card.selected .card-inner { outline: 0px solid #f0d98c; outline-offset: 3px; }
+  .elem-icon {
+    position: absolute;
+    top: 5px;
+    width: 32.5px;
+    height: 32.5px;
+    background-repeat: no-repeat;
+    background-size: 130px 32.5px;
+    animation: elemCycle 0.8s steps(4) infinite;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,0.9));
+    z-index: 2;
+  }
+  body.layout-og .elem-icon { right: 5px; left: auto; }
+  body.layout-adjusted .elem-icon { right: 5px; left: auto; }
+  @keyframes elemCycle {
+    from { background-position: 0 0; }
+    to { background-position: -130px 0; }
+  }
+  .elem-icon.fire    { background-image: url('Cards/FF8/icons/elements/fire_strip.png'); }
+  .elem-icon.ice     { background-image: url('Cards/FF8/icons/elements/ice_strip.png'); }
+  .elem-icon.thunder { background-image: url('Cards/FF8/icons/elements/thunder_strip.png'); }
+  .elem-icon.earth   { background-image: url('Cards/FF8/icons/elements/earth_strip.png'); }
+  .elem-icon.poison  { background-image: url('Cards/FF8/icons/elements/poison_strip.png'); }
+  .elem-icon.wind    { background-image: url('Cards/FF8/icons/elements/wind_strip.png'); }
+  .elem-icon.water   { background-image: url('Cards/FF8/icons/elements/water_strip.png'); }
+  .elem-icon.holy    { background-image: url('Cards/FF8/icons/elements/holy_strip.png'); }
+  .card .art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
+    border-radius: 0;
+  }
+  .val {
+    position: absolute;
+    font-weight: bold;
+    text-align: center;
+    color: #fff;
+    -webkit-text-stroke: 0.5px #000;
+    text-shadow: -0.5px -0.5px 0 #000, 0.5px -0.5px 0 #000, -0.5px 0.5px 0 #000, 0.5px 0.5px 0 #000;
+    line-height: 1.3;
+    z-index: 2;
+  }
+  /* Elemental rule: shows the tile-adjusted stat instead of the base one,
+     colored to make the swing obvious at a glance. */
+  .val.val-boost { color: #5bc8ff; }
+  .val.val-penalty { color: #ff5b5b; }
+  /* Adjusted layout: numbers spread to the four edges of the card */
+  body.layout-adjusted .val { font-size: 26px; width: 26px; }
+  body.layout-adjusted .val.top { top: 5px; left: 50%; right: auto; bottom: auto; transform: translateX(-50%); }
+  body.layout-adjusted .val.bottom { bottom: 5px; left: 50%; top: auto; right: auto; transform: translateX(-50%); }
+  body.layout-adjusted .val.left { left: 5px; top: 50%; right: auto; bottom: auto; transform: translateY(-50%); }
+  body.layout-adjusted .val.right { right: 5px; top: 50%; left: auto; bottom: auto; transform: translateY(-50%); }
+  /* OG layout: classic FF8 clustered corner arrangement, top-left of card.
+     All four numbers are centered (via translate(-50%,-50%)) around a shared
+     mid-x so top/bottom sit directly above the left/right pair, diamond-style. */
+  body.layout-og .val { font-size: 21px; width: 21px; line-height: 1; }
+  body.layout-og .val.top    { top: 17px; left: 26px; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+  body.layout-og .val.left   { top: 33px; left: 16px; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+  body.layout-og .val.right  { top: 33px; left: 36px; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+  body.layout-og .val.bottom { top: 51px; left: 26px; right: auto; bottom: auto; transform: translate(-50%, -50%); }
+  .label {
+    position: absolute;
+    top: 100%;
+    margin-top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: none;
+    text-align: center;
+    font-size: 16px;
+    font-family: Verdana, Arial, sans-serif;
+    color: #fff;
+    background: rgba(0,0,0,0.75);
+    border-radius: 3px;
+    padding: 2px 7px;
+    white-space: nowrap;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+  .card:hover .label { opacity: 1; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(3, 138px);
+    grid-template-rows: repeat(3, 138px);
+    gap: 9px;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    background-image: url('BG.png');
+    background-size: 543px 510px;
+    background-position: center;
+  }
+  .cell {
+    position: relative;
+    background: transparent;
+    border: 2px dashed transparent;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .cell.empty-selectable {
+    background: rgba(0,0,0,0.12);
+    border-color: rgba(255,255,255,0.45);
+  }
+  .cell.empty-selectable:hover { background: rgba(240,217,140,0.15); cursor: pointer; }
+  @keyframes flipAnim {
+    0% { transform: rotateY(0deg) scale(1); }
+    50% { transform: rotateY(90deg) scale(1.05); }
+    100% { transform: rotateY(0deg) scale(1); }
+  }
+  .card.flip { animation: flipAnim 0.45s ease; }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    font-size: 39px;
+    z-index: 10;
+  }
+  #overlay.show { display: flex; }
+  #overlay button {
+    background: #f0d98c;
+    color: #222;
+    border: none;
+    border-radius: 9px;
+    padding: 15px 33px;
+    font-size: 23px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  #overlayGraphic {
+    max-width: 420px;
+    display: none;
+  }
+  #overlayGraphic.show { display: block; }
+  #ruleBanner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.7);
+    max-width: 320px;
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.7));
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  #ruleBanner.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+</style>
+</head>
+<body class="layout-og shape-natural">
+
+<h1>TRIPLE TRIAD</h1>
+
+<div id="rules">
+  <label><input type="checkbox" id="ruleSame"> Same</label>
+  <label><input type="checkbox" id="rulePlus"> Plus</label>
+  <label><input type="checkbox" id="ruleUp"> Up</label>
+  <label><input type="checkbox" id="ruleCombo"> Combo</label>
+  <label><input type="checkbox" id="ruleElemental"> Elemental</label>
+  <label>Element Alignment:
+    <select id="alignmentSelect"></select>
+  </label>
+  <label>Num Layout:
+    <select id="layoutSelect">
+      <option value="og" selected>OG</option>
+      <option value="adjusted">Adjusted</option>
+    </select>
+  </label>
+  <label>Shape:
+    <select id="shapeSelect">
+      <option value="natural" selected>Natural</option>
+      <option value="square">Square</option>
+    </select>
+  </label>
+  <label>Background:
+    <select id="bgSelect">
+      <option value="Backgrounds/Triple Triad.png" selected>Triple Triad</option>
+      <option value="Backgrounds/Balamb Garden.png">Balamb Garden</option>
+      <option value="none">No Background</option>
+    </select>
+  </label>
+  <label>Hand Style:
+    <select id="handStyleSelect">
+      <option value="default" selected>Flat</option>
+      <option value="stack">Stacked</option>
+    </select>
+  </label>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<div id="musicBar">
+  <span>Music:</span>
+  <select id="musicSelect"></select>
+  <span>Volume:</span>
+  <select id="volumeSelect"></select>
+  <button id="musicPlayBtn">▶ Play</button>
+  <label><input type="checkbox" id="autoplayToggle"> Autoplay</label>
+  <label><input type="checkbox" id="sfxToggle" checked> SFX</label>
+  <label><input type="checkbox" id="sfxHoverToggle"> SFX (Hover)</label>
+  <span>SFX Volume:</span>
+  <select id="sfxVolumeSelect"></select>
+  <audio id="bgAudio" loop></audio>
+</div>
+
+<div class="game-row">
+  <div id="handP1" class="hand"></div>
+  <div class="board-col">
+    <div id="topbar">
+      <div id="scoreP1">P1: 5</div>
+      <div id="turnIndicator">Player 1's turn</div>
+      <div id="scoreP2">P2: 5</div>
+    </div>
+    <div id="board"></div>
+    <img id="ruleBanner" src="" alt="">
+  </div>
+  <div id="handP2" class="hand"></div>
+</div>
+
+<div id="overlay">
+  <img id="overlayGraphic" src="" alt="">
+  <div id="overlayText"></div>
+  <button id="overlayReset">Play Again</button>
+</div>
+
+<script>
+// ---------------------------------------------------------------
+// FULL FF8 CARD DATABASE (110 cards) — mirrors Cards/FF8/cards.json
+// Images live in Cards/FF8/cards_individual/, referenced by filename below.
+// ---------------------------------------------------------------
+const CARD_DB = [{"id":1,"name":"Geezard","level":1,"position":1,"element":null,"top":1,"left":5,"right":4,"bottom":1,"image":"001_geezard.png"},{"id":2,"name":"Funguar","level":1,"position":2,"element":null,"top":5,"left":3,"right":1,"bottom":1,"image":"002_funguar.png"},{"id":3,"name":"Bite Bug","level":1,"position":3,"element":null,"top":1,"left":5,"right":3,"bottom":3,"image":"003_bite_bug.png"},{"id":4,"name":"Red Bat","level":1,"position":4,"element":null,"top":6,"left":2,"right":1,"bottom":1,"image":"004_red_bat.png"},{"id":5,"name":"Blobra","level":1,"position":5,"element":null,"top":2,"left":5,"right":3,"bottom":1,"image":"005_blobra.png"},{"id":6,"name":"Gayla","level":1,"position":6,"element":"Thunder","top":2,"left":4,"right":1,"bottom":4,"image":"006_gayla.png"},{"id":7,"name":"Gesper","level":1,"position":7,"element":null,"top":1,"left":1,"right":5,"bottom":4,"image":"007_gesper.png"},{"id":8,"name":"Fastitocalon-F","level":1,"position":8,"element":"Earth","top":3,"left":1,"right":5,"bottom":2,"image":"008_fastitocalon-f.png"},{"id":9,"name":"Blood Soul","level":1,"position":9,"element":null,"top":2,"left":1,"right":1,"bottom":6,"image":"009_blood_soul.png"},{"id":10,"name":"Caterchipillar","level":1,"position":10,"element":null,"top":4,"left":3,"right":2,"bottom":4,"image":"010_caterchipillar.png"},{"id":11,"name":"Cockatrice","level":1,"position":11,"element":"Thunder","top":2,"left":6,"right":1,"bottom":2,"image":"011_cockatrice.png"},{"id":12,"name":"Grat","level":2,"position":1,"element":null,"top":7,"left":1,"right":1,"bottom":3,"image":"012_grat.png"},{"id":13,"name":"Buel","level":2,"position":2,"element":null,"top":6,"left":3,"right":2,"bottom":2,"image":"013_buel.png"},{"id":14,"name":"Mesmerize","level":2,"position":3,"element":null,"top":5,"left":4,"right":3,"bottom":3,"image":"014_mesmerize.png"},{"id":15,"name":"Glacial Eye","level":2,"position":4,"element":"Ice","top":6,"left":3,"right":1,"bottom":4,"image":"015_glacial_eye.png"},{"id":16,"name":"Belhelmel","level":2,"position":5,"element":null,"top":3,"left":3,"right":4,"bottom":5,"image":"016_belhelmel.png"},{"id":17,"name":"Thrustaevis","level":2,"position":6,"element":"Wind","top":5,"left":5,"right":3,"bottom":2,"image":"017_thrustaevis.png"},{"id":18,"name":"Anacondaur","level":2,"position":7,"element":"Poison","top":5,"left":5,"right":1,"bottom":3,"image":"018_anacondaur.png"},{"id":19,"name":"Creeps","level":2,"position":8,"element":"Thunder","top":5,"left":2,"right":2,"bottom":5,"image":"019_creeps.png"},{"id":20,"name":"Grendel","level":2,"position":9,"element":"Thunder","top":4,"left":2,"right":4,"bottom":5,"image":"020_grendel.png"},{"id":21,"name":"Jelleye","level":2,"position":10,"element":null,"top":3,"left":7,"right":2,"bottom":1,"image":"021_jelleye.png"},{"id":22,"name":"Grand Mantis","level":2,"position":11,"element":null,"top":5,"left":3,"right":2,"bottom":5,"image":"022_grand_mantis.png"},{"id":23,"name":"Forbidden","level":3,"position":1,"element":null,"top":6,"left":2,"right":6,"bottom":3,"image":"023_forbidden.png"},{"id":24,"name":"Armadodo","level":3,"position":2,"element":"Earth","top":6,"left":6,"right":3,"bottom":1,"image":"024_armadodo.png"},{"id":25,"name":"Tri-Face","level":3,"position":3,"element":"Poison","top":3,"left":5,"right":5,"bottom":5,"image":"025_tri-face.png"},{"id":26,"name":"Fastitocalon","level":3,"position":4,"element":"Earth","top":7,"left":3,"right":5,"bottom":1,"image":"026_fastitocalon.png"},{"id":27,"name":"Snow Lion","level":3,"position":5,"element":"Ice","top":7,"left":3,"right":1,"bottom":5,"image":"027_snow_lion.png"},{"id":28,"name":"Ochu","level":3,"position":6,"element":null,"top":5,"left":3,"right":6,"bottom":3,"image":"028_ochu.png"},{"id":29,"name":"SAM08G","level":3,"position":7,"element":"Fire","top":5,"left":4,"right":6,"bottom":2,"image":"029_sam08g.png"},{"id":30,"name":"Death Claw","level":3,"position":8,"element":"Fire","top":4,"left":2,"right":4,"bottom":7,"image":"030_death_claw.png"},{"id":31,"name":"Cactuar","level":3,"position":9,"element":null,"top":6,"left":3,"right":2,"bottom":6,"image":"031_cactuar.png"},{"id":32,"name":"Tonberry","level":3,"position":10,"element":null,"top":3,"left":4,"right":6,"bottom":4,"image":"032_tonberry.png"},{"id":33,"name":"Abyss Worm","level":3,"position":11,"element":"Earth","top":7,"left":5,"right":2,"bottom":3,"image":"033_abyss_worm.png"},{"id":34,"name":"Turtapod","level":4,"position":1,"element":null,"top":2,"left":7,"right":3,"bottom":6,"image":"034_turtapod.png"},{"id":35,"name":"Vysage","level":4,"position":2,"element":null,"top":6,"left":5,"right":5,"bottom":4,"image":"035_vysage.png"},{"id":36,"name":"T-Rexaur","level":4,"position":3,"element":null,"top":4,"left":7,"right":6,"bottom":2,"image":"036_t-rexaur.png"},{"id":37,"name":"Bomb","level":4,"position":4,"element":"Fire","top":2,"left":3,"right":7,"bottom":6,"image":"037_bomb.png"},{"id":38,"name":"Blitz","level":4,"position":5,"element":"Thunder","top":1,"left":7,"right":6,"bottom":4,"image":"038_blitz.png"},{"id":39,"name":"Wendigo","level":4,"position":6,"element":null,"top":7,"left":6,"right":3,"bottom":1,"image":"039_wendigo.png"},{"id":40,"name":"Torama","level":4,"position":7,"element":null,"top":7,"left":4,"right":4,"bottom":4,"image":"040_torama.png"},{"id":41,"name":"Imp","level":4,"position":8,"element":null,"top":3,"left":6,"right":7,"bottom":3,"image":"041_imp.png"},{"id":42,"name":"Blue Dragon","level":4,"position":9,"element":"Poison","top":6,"left":3,"right":2,"bottom":7,"image":"042_blue_dragon.png"},{"id":43,"name":"Adamantoise","level":4,"position":10,"element":"Earth","top":4,"left":6,"right":5,"bottom":5,"image":"043_adamantoise.png"},{"id":44,"name":"Hexadragon","level":4,"position":11,"element":"Fire","top":7,"left":3,"right":5,"bottom":4,"image":"044_hexadragon.png"},{"id":45,"name":"Iron Giant","level":5,"position":1,"element":null,"top":6,"left":5,"right":5,"bottom":6,"image":"045_iron_giant.png"},{"id":46,"name":"Behemoth","level":5,"position":2,"element":null,"top":3,"left":7,"right":6,"bottom":5,"image":"046_behemoth.png"},{"id":47,"name":"Chimera","level":5,"position":3,"element":"Water","top":7,"left":3,"right":6,"bottom":5,"image":"047_chimera.png"},{"id":48,"name":"PuPu","level":5,"position":4,"element":null,"top":3,"left":1,"right":10,"bottom":2,"image":"048_pupu.png"},{"id":49,"name":"Elastoid","level":5,"position":5,"element":null,"top":6,"left":7,"right":2,"bottom":6,"image":"049_elastoid.png"},{"id":50,"name":"GIM47N","level":5,"position":6,"element":null,"top":5,"left":4,"right":5,"bottom":7,"image":"050_gim47n.png"},{"id":51,"name":"Malboro","level":5,"position":7,"element":"Poison","top":7,"left":2,"right":7,"bottom":4,"image":"051_malboro.png"},{"id":52,"name":"Ruby Dragon","level":5,"position":8,"element":"Fire","top":7,"left":4,"right":2,"bottom":7,"image":"052_ruby_dragon.png"},{"id":53,"name":"Elnoyle","level":5,"position":9,"element":null,"top":5,"left":6,"right":3,"bottom":7,"image":"053_elnoyle.png"},{"id":54,"name":"Tonberry King","level":5,"position":10,"element":null,"top":7,"left":4,"right":6,"bottom":7,"image":"054_tonberry_king.png"},{"id":55,"name":"Wedge, Biggs","level":5,"position":11,"element":null,"top":6,"left":7,"right":6,"bottom":2,"image":"055_wedge_biggs.png"},{"id":56,"name":"Fujin, Raijin","level":6,"position":1,"element":null,"top":2,"left":4,"right":8,"bottom":8,"image":"056_fujin_raijin.png"},{"id":57,"name":"Elvoret","level":6,"position":2,"element":"Wind","top":7,"left":4,"right":8,"bottom":3,"image":"057_elvoret.png"},{"id":58,"name":"X-ATM092","level":6,"position":3,"element":null,"top":4,"left":3,"right":8,"bottom":7,"image":"058_x-atm092.png"},{"id":59,"name":"Granaldo","level":6,"position":4,"element":null,"top":7,"left":5,"right":2,"bottom":8,"image":"059_granaldo.png"},{"id":60,"name":"Gerogero","level":6,"position":5,"element":"Poison","top":1,"left":3,"right":8,"bottom":8,"image":"060_gerogero.png"},{"id":61,"name":"Iguion","level":6,"position":6,"element":null,"top":8,"left":2,"right":2,"bottom":8,"image":"061_iguion.png"},{"id":62,"name":"Abadon","level":6,"position":7,"element":null,"top":6,"left":5,"right":8,"bottom":4,"image":"062_abadon.png"},{"id":63,"name":"Trauma","level":6,"position":8,"element":null,"top":4,"left":6,"right":8,"bottom":5,"image":"063_trauma.png"},{"id":64,"name":"Oilboyle","level":6,"position":9,"element":null,"top":1,"left":8,"right":8,"bottom":4,"image":"064_oilboyle.png"},{"id":65,"name":"Shumi Tribe","level":6,"position":10,"element":null,"top":6,"left":4,"right":5,"bottom":8,"image":"065_shumi_tribe.png"},{"id":66,"name":"Krysta","level":6,"position":11,"element":null,"top":7,"left":1,"right":5,"bottom":8,"image":"066_krysta.png"},{"id":67,"name":"Propagator","level":7,"position":1,"element":null,"top":8,"left":8,"right":4,"bottom":4,"image":"067_propagator.png"},{"id":68,"name":"Jumbo Cactuar","level":7,"position":2,"element":null,"top":8,"left":4,"right":8,"bottom":4,"image":"068_jumbo_cactuar.png"},{"id":69,"name":"Tri-Point","level":7,"position":3,"element":"Thunder","top":8,"left":8,"right":5,"bottom":2,"image":"069_tri-point.png"},{"id":70,"name":"Gargantua","level":7,"position":4,"element":null,"top":5,"left":8,"right":6,"bottom":6,"image":"070_gargantua.png"},{"id":71,"name":"Mobile Type 8","level":7,"position":5,"element":null,"top":8,"left":3,"right":6,"bottom":7,"image":"071_mobile_type_8.png"},{"id":72,"name":"Sphinxara","level":7,"position":6,"element":null,"top":8,"left":8,"right":3,"bottom":5,"image":"072_sphinxara.png"},{"id":73,"name":"Tiamat","level":7,"position":7,"element":null,"top":8,"left":4,"right":8,"bottom":5,"image":"073_tiamat.png"},{"id":74,"name":"BGH251F2","level":7,"position":8,"element":null,"top":5,"left":5,"right":7,"bottom":8,"image":"074_bgh251f2.png"},{"id":75,"name":"Red Giant","level":7,"position":9,"element":null,"top":6,"left":7,"right":8,"bottom":4,"image":"075_red_giant.png"},{"id":76,"name":"Catoblepas","level":7,"position":10,"element":null,"top":1,"left":7,"right":8,"bottom":7,"image":"076_catoblepas.png"},{"id":77,"name":"Ultima Weapon","level":7,"position":11,"element":null,"top":7,"left":8,"right":7,"bottom":2,"image":"077_ultima_weapon.png"},{"id":78,"name":"Chubby Chocobo","level":8,"position":1,"element":null,"top":4,"left":9,"right":4,"bottom":8,"image":"078_chubby_chocobo.png"},{"id":79,"name":"Angelo","level":8,"position":2,"element":null,"top":9,"left":3,"right":6,"bottom":7,"image":"079_angelo.png"},{"id":80,"name":"Gilgamesh","level":8,"position":3,"element":null,"top":3,"left":6,"right":7,"bottom":9,"image":"080_gilgamesh.png"},{"id":81,"name":"MiniMog","level":8,"position":4,"element":null,"top":9,"left":2,"right":3,"bottom":9,"image":"081_minimog.png"},{"id":82,"name":"Chicobo","level":8,"position":5,"element":null,"top":9,"left":4,"right":4,"bottom":8,"image":"082_chicobo.png"},{"id":83,"name":"Quezacotl","level":8,"position":6,"element":"Thunder","top":2,"left":4,"right":9,"bottom":9,"image":"083_quezacotl.png"},{"id":84,"name":"Shiva","level":8,"position":7,"element":"Ice","top":6,"left":9,"right":7,"bottom":4,"image":"084_shiva.png"},{"id":85,"name":"Ifrit","level":8,"position":8,"element":"Fire","top":9,"left":8,"right":6,"bottom":2,"image":"085_ifrit.png"},{"id":86,"name":"Siren","level":8,"position":9,"element":null,"top":8,"left":2,"right":9,"bottom":6,"image":"086_siren.png"},{"id":87,"name":"Sacred","level":8,"position":10,"element":"Earth","top":5,"left":9,"right":1,"bottom":9,"image":"087_sacred.png"},{"id":88,"name":"Minotaur","level":8,"position":11,"element":"Earth","top":9,"left":9,"right":5,"bottom":2,"image":"088_minotaur.png"},{"id":89,"name":"Carbuncle","level":9,"position":1,"element":null,"top":8,"left":4,"right":4,"bottom":10,"image":"089_carbuncle.png"},{"id":90,"name":"Diablos","level":9,"position":2,"element":null,"top":5,"left":3,"right":10,"bottom":8,"image":"090_diablos.png"},{"id":91,"name":"Leviathan","level":9,"position":3,"element":"Water","top":7,"left":7,"right":10,"bottom":1,"image":"091_leviathan.png"},{"id":92,"name":"Odin","level":9,"position":4,"element":null,"top":8,"left":5,"right":10,"bottom":3,"image":"092_odin.png"},{"id":93,"name":"Pandemona","level":9,"position":5,"element":"Wind","top":10,"left":7,"right":1,"bottom":7,"image":"093_pandemona.png"},{"id":94,"name":"Cerberus","level":9,"position":6,"element":null,"top":7,"left":10,"right":4,"bottom":6,"image":"094_cerberus.png"},{"id":95,"name":"Alexander","level":9,"position":7,"element":"Holy","top":9,"left":2,"right":10,"bottom":4,"image":"095_alexander.png"},{"id":96,"name":"Phoenix","level":9,"position":8,"element":"Fire","top":7,"left":10,"right":2,"bottom":7,"image":"096_phoenix.png"},{"id":97,"name":"Bahamut","level":9,"position":9,"element":null,"top":10,"left":6,"right":8,"bottom":2,"image":"097_bahamut.png"},{"id":98,"name":"Doomtrain","level":9,"position":10,"element":"Poison","top":3,"left":10,"right":1,"bottom":10,"image":"098_doomtrain.png"},{"id":99,"name":"Eden","level":9,"position":11,"element":null,"top":4,"left":10,"right":4,"bottom":9,"image":"099_eden.png"},{"id":100,"name":"Ward","level":10,"position":1,"element":null,"top":10,"left":8,"right":7,"bottom":2,"image":"100_ward.png"},{"id":101,"name":"Kiros","level":10,"position":2,"element":null,"top":6,"left":10,"right":7,"bottom":6,"image":"101_kiros.png"},{"id":102,"name":"Laguna","level":10,"position":3,"element":null,"top":5,"left":9,"right":10,"bottom":3,"image":"102_laguna.png"},{"id":103,"name":"Selphie","level":10,"position":4,"element":null,"top":10,"left":4,"right":8,"bottom":6,"image":"103_selphie.png"},{"id":104,"name":"Quistis","level":10,"position":5,"element":null,"top":9,"left":2,"right":6,"bottom":10,"image":"104_quistis.png"},{"id":105,"name":"Irvine","level":10,"position":6,"element":null,"top":2,"left":10,"right":6,"bottom":9,"image":"105_irvine.png"},{"id":106,"name":"Zell","level":10,"position":7,"element":null,"top":8,"left":6,"right":5,"bottom":10,"image":"106_zell.png"},{"id":107,"name":"Rinoa","level":10,"position":8,"element":null,"top":4,"left":10,"right":10,"bottom":2,"image":"107_rinoa.png"},{"id":108,"name":"Edea","level":10,"position":9,"element":null,"top":10,"left":3,"right":10,"bottom":3,"image":"108_edea.png"},{"id":109,"name":"Seifer","level":10,"position":10,"element":null,"top":6,"left":4,"right":9,"bottom":10,"image":"109_seifer.png"},{"id":110,"name":"Squall","level":10,"position":11,"element":null,"top":10,"left":9,"right":4,"bottom":6,"image":"110_squall.png"}];
+
+const CARD_IMG_PATH = "Cards/FF8/cards_individual/";
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Deals 5 unique random cards to each player from the full 110-card pool.
+function dealHands() {
+  const pool = shuffle(CARD_DB);
+  return {
+    p1: pool.slice(0, 5).map(c => ({ ...c })),
+    p2: pool.slice(5, 10).map(c => ({ ...c })),
+  };
+}
+
+const ELEMENTS = ["Fire", "Ice", "Thunder", "Earth", "Poison", "Wind", "Water", "Holy"];
+
+// Every distinct element present across both hands, each appearing exactly
+// once regardless of how many cards share it — so Ice showing up on 3 cards
+// is no more likely to get picked than a Fire card that only shows up once.
+function handElementPool() {
+  const cards = [...state.hands.p1, ...state.hands.p2];
+  return [...new Set(cards.map(c => c.element).filter(e => e))];
+}
+
+// Randomly assigns an element to a handful of tiles (3-5), matching the
+// spread typically seen in a real elemental match. Only picks from
+// eligibleIndices, so tiles that already have a card on them are left
+// alone if the rule gets turned on mid-game.
+//
+// state.elementAlignment (0-100%) controls, per tile, how likely the
+// element is drawn from what's actually in the players' hands instead of
+// being fully random: 0% = always fully random, 100% = always drawn from
+// hand elements (if any exist in hand at all — a fully elementless deal
+// falls back to random regardless of the setting). At 100% with fewer
+// generated tiles than distinct hand elements, some hand elements simply
+// won't appear on the board — that's expected, not a bug.
+function generateBoardElements(eligibleIndices) {
+  const elements = Array(9).fill(null);
+  const pool = shuffle(eligibleIndices);
+  const count = Math.min(pool.length, 3 + Math.floor(Math.random() * 3)); // 3-5 tiles
+  const handPool = handElementPool();
+  pool.slice(0, count).forEach(i => {
+    const useHandPool = handPool.length > 0 && Math.random() * 100 < state.elementAlignment;
+    const source = useHandPool ? handPool : ELEMENTS;
+    elements[i] = source[Math.floor(Math.random() * source.length)];
+  });
+  return elements;
+}
+
+// A card on a tile matching its own element gets +1 to every rank for
+// capture comparisons; a card on a non-matching elemental tile gets -1.
+// No tile element, or the rule being off entirely, means no modifier.
+function elementalModifier(cellIndex, card) {
+  if (!state.rules.elemental) return 0;
+  const tileElem = state.boardElements[cellIndex];
+  if (!tileElem) return 0;
+  return card.element === tileElem ? 1 : -1;
+}
+
+// A card's effective rank for capture comparisons, including whatever
+// elemental bonus/penalty applies for the tile it's sitting on. The card's
+// own stored value never changes — only this derived comparison value does.
+function rank(cellIndex, card, side) {
+  return card[side] + elementalModifier(cellIndex, card);
+}
+
+// ---------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------
+const state = {
+  board: Array(9).fill(null),   // each: { card, owner: 'p1'|'p2' }
+  boardElements: Array(9).fill(null), // tile element assigned per cell, or null
+  hands: { p1: [], p2: [] },
+  turn: 'p1',
+  selected: null,                // { owner, idx }
+  rules: { same: false, plus: false, up: false, combo: false, elemental: false },
+  gameOver: false,
+  suppressOverlay: false,
+  elementAlignment: 80, // % chance a generated tile's element is drawn from the cards in hand instead of fully random
+};
+
+const DIRS = [
+  { dir: 'up',    mySide: 'top',    theirSide: 'bottom' },
+  { dir: 'right', mySide: 'right',  theirSide: 'left'   },
+  { dir: 'down',  mySide: 'bottom', theirSide: 'top'    },
+  { dir: 'left',  mySide: 'left',   theirSide: 'right'  },
+];
+
+function neighborIndex(index, dir) {
+  const row = Math.floor(index / 3), col = index % 3;
+  if (dir === 'up')    return row > 0 ? index - 3 : null;
+  if (dir === 'down')  return row < 2 ? index + 3 : null;
+  if (dir === 'left')  return col > 0 ? index - 1 : null;
+  if (dir === 'right') return col < 2 ? index + 1 : null;
+}
+
+function getNeighbors(index) {
+  return DIRS.map(d => {
+    const ni = neighborIndex(index, d.dir);
+    if (ni === null || !state.board[ni]) return null;
+    return { index: ni, dir: d.dir, mySide: d.mySide, theirSide: d.theirSide, cell: state.board[ni] };
+  }).filter(Boolean);
+}
+
+function fmt(v) { return v >= 10 ? 'A' : v; }
+
+// ---------------------------------------------------------------
+// GAME LOGIC
+// ---------------------------------------------------------------
+function initGame() {
+  state.board = Array(9).fill(null);
+  state.hands = dealHands();
+  // Generated after hands are dealt — element alignment draws from what's
+  // actually in hand this game.
+  state.boardElements = state.rules.elemental
+    ? generateBoardElements([0, 1, 2, 3, 4, 5, 6, 7, 8])
+    : Array(9).fill(null);
+  state.turn = 'p1';
+  state.selected = null;
+  state.gameOver = false;
+  state.suppressOverlay = false;
+  renderAll();
+}
+
+function selectCard(owner, idx) {
+  if (state.gameOver || owner !== state.turn) return;
+  if (state.selected && state.selected.owner === owner && state.selected.idx === idx) {
+    state.selected = null;
+    playSfx('cursorCancel');
+  } else {
+    state.selected = { owner, idx };
+    playSfx('cursorMove');
+  }
+  renderAll();
+}
+
+function placeCard(cellIndex) {
+  if (state.gameOver || !state.selected || state.board[cellIndex]) return;
+  const { owner, idx } = state.selected;
+  const card = state.hands[owner][idx];
+
+  // Capture the hand card's real on-screen position before it's removed —
+  // the placed card needs to rise up FROM there (still over the hand),
+  // and only afterward travel down to the board cell.
+  const handContainer = document.getElementById(owner === 'p1' ? 'handP1' : 'handP2');
+  const handCardEl = handContainer.children[idx];
+  const startRect = handCardEl ? handCardEl.getBoundingClientRect() : null;
+
+  state.board[cellIndex] = { card, owner, _justPlaced: true };
+  state.hands[owner].splice(idx, 1);
+  state.selected = null;
+  playSfx('cardPlace');
+
+  const captureResult = resolveCaptures(cellIndex, owner);
+  checkGameEnd();
+  if (!state.gameOver) {
+    state.turn = owner === 'p1' ? 'p2' : 'p1';
+  }
+  // Hold the win/lose/draw overlay back until the flip/banner sequence
+  // below has fully played out, even though state.gameOver is already true.
+  if (state.gameOver) state.suppressOverlay = true;
+  renderAll();
+
+  // Figure out which cells this turn captured, so their flip animation can
+  // wait until the placement animation below has fully finished.
+  const flippedIndices = state.board
+    .map((cell, i) => (cell && cell._justFlipped ? i : -1))
+    .filter(i => i !== -1);
+
+  let placementDone = Promise.resolve();
+
+  if (startRect) {
+    const cellEl = document.querySelectorAll('#board .cell')[cellIndex];
+    const boardCardEl = cellEl && cellEl.querySelector('.card');
+    if (boardCardEl) {
+      const endRect = boardCardEl.getBoundingClientRect();
+      const dx = (startRect.left + startRect.width / 2) - (endRect.left + endRect.width / 2);
+      const dy = (startRect.top + startRect.height / 2) - (endRect.top + endRect.height / 2);
+      // Two separate straight-line moves, not one diagonal glide: rise
+      // straight up and vanish while still over the hand, then reappear
+      // and fall straight down onto the board. Both keyframes at the
+      // midpoint sit at opacity 0, so the horizontal repositioning between
+      // them (dx -> 0) happens while nothing is visible.
+      const placementAnim = boardCardEl.animate([
+        { transform: `translate(${dx}px, ${dy}px)`, opacity: 1, offset: 0 },
+        { transform: `translate(${dx}px, ${dy - 35}px)`, opacity: 0, offset: 0.3 },
+        { transform: `translate(0px, -35px)`, opacity: 0, offset: 0.31 },
+        { transform: 'translate(0, 0)', opacity: 1, offset: 1 }
+      ], { duration: 450, easing: 'ease-in-out' });
+      placementDone = placementAnim.finished.catch(() => {});
+    }
+  }
+
+  placementDone.then(async () => {
+    // Same!/Plus!/Combo! banners show first, before the actual flips
+    // reveal — matching the original game's pacing. If Same triggered,
+    // Plus only gets its own banner too when it captured something Same
+    // didn't already cover — otherwise showing both is redundant.
+    if (captureResult.same) {
+      await showRuleBanner('same');
+      if (captureResult.plus && captureResult.plusHasExtra) await showRuleBanner('plus');
+    } else if (captureResult.plus) {
+      await showRuleBanner('plus');
+    }
+    if (captureResult.up && captureResult.upHasExtra) await showRuleBanner('up');
+    if (captureResult.combo) await showRuleBanner('combo');
+
+    flippedIndices.forEach(i => {
+      const cell = state.board[i];
+      if (!cell) return;
+      cell._justFlipped = false;
+      delete cell._displayOwner;
+      const cellEl = document.querySelectorAll('#board .cell')[i];
+      if (!cellEl) return;
+      // Rebuild the element with the true (new) owner so the color swap
+      // happens exactly when the flip plays, not before.
+      const newCardEl = createCardElement(cell.card, cell.owner, i);
+      newCardEl.classList.add('flip');
+      cellEl.innerHTML = '';
+      cellEl.appendChild(newCardEl);
+      playSfx('cardFlip');
+    });
+    if (flippedIndices.length) updateScores();
+
+    if (state.gameOver) {
+      // Give the last flip's animation time to finish before revealing
+      // the win/lose/draw screen.
+      setTimeout(() => {
+        state.suppressOverlay = false;
+        updateOverlay();
+      }, 450);
+    }
+  });
+}
+
+function resolveCaptures(index, owner) {
+  const placedCell = state.board[index];
+  const neighbors = getNeighbors(index);
+  const opponent = owner === 'p1' ? 'p2' : 'p1';
+
+  // Basic captures against the just-placed card
+  const basicCaptures = neighbors.filter(n =>
+    n.cell.owner === opponent &&
+    rank(index, placedCell.card, n.mySide) > rank(n.index, n.cell.card, n.theirSide)
+  );
+
+  const toFlip = new Set(basicCaptures.map(n => n.index));
+  let comboTriggered = false;
+  let sameHit = false;
+  let plusHit = false;
+  let upHit = false;
+  const sameFlipIndices = new Set();
+  const plusFlipIndices = new Set();
+
+  if (state.rules.same) {
+    const sameMatches = neighbors.filter(n =>
+      rank(index, placedCell.card, n.mySide) === rank(n.index, n.cell.card, n.theirSide)
+    );
+    if (sameMatches.length >= 2) {
+      sameMatches.forEach(n => {
+        if (n.cell.owner === opponent) { toFlip.add(n.index); sameFlipIndices.add(n.index); }
+      });
+      // Only announce/count this as a hit if it actually flipped something —
+      // 2+ matching neighbors that are already your own cards satisfy the
+      // rule's condition but capture nothing, so no banner should show.
+      if (sameFlipIndices.size > 0) {
+        comboTriggered = true;
+        sameHit = true;
+      }
+    }
+  }
+
+  if (state.rules.plus) {
+    const groups = {};
+    neighbors.forEach(n => {
+      const sum = rank(index, placedCell.card, n.mySide) + rank(n.index, n.cell.card, n.theirSide);
+      (groups[sum] = groups[sum] || []).push(n);
+    });
+    Object.values(groups).forEach(group => {
+      if (group.length >= 2) {
+        const groupFlipIndices = [];
+        group.forEach(n => {
+          if (n.cell.owner === opponent) { toFlip.add(n.index); plusFlipIndices.add(n.index); groupFlipIndices.push(n.index); }
+        });
+        if (groupFlipIndices.length > 0) {
+          comboTriggered = true;
+          plusHit = true;
+        }
+      }
+    });
+  }
+
+  // Up rule (custom, non-standard): a neighbor exactly 1 higher than the
+  // placed card on the touching side flips too, but — like Same/Plus —
+  // needs 2+ neighbors to satisfy that at once to trigger.
+  const upFlipIndices = new Set();
+  if (state.rules.up) {
+    const upMatches = neighbors.filter(n =>
+      rank(n.index, n.cell.card, n.theirSide) === rank(index, placedCell.card, n.mySide) + 1
+    );
+    if (upMatches.length >= 2) {
+      upMatches.forEach(n => {
+        if (n.cell.owner === opponent) { toFlip.add(n.index); upFlipIndices.add(n.index); }
+      });
+      if (upFlipIndices.size > 0) {
+        comboTriggered = true;
+        upHit = true;
+      }
+    }
+  }
+
+  flipCells([...toFlip], owner);
+
+  // Chain reaction: only runs at all if the separate Combo checkbox is on,
+  // regardless of which rule(s) above triggered the initial flips.
+  let chainAddedMore = false;
+  if (comboTriggered && state.rules.combo) {
+    let queue = [...toFlip];
+    const visited = new Set(queue);
+    while (queue.length) {
+      const ci = queue.shift();
+      const chainNeighbors = getNeighbors(ci).filter(n => !visited.has(n.index));
+      chainNeighbors.forEach(n => {
+        if (n.cell.owner === opponent &&
+            rank(ci, state.board[ci].card, n.mySide) > rank(n.index, n.cell.card, n.theirSide)) {
+          flipCells([n.index], owner);
+          visited.add(n.index);
+          queue.push(n.index);
+          chainAddedMore = true;
+        }
+      });
+    }
+  }
+
+  // Plus/Up are only worth announcing on their own if they captured
+  // something the earlier-checked rule(s) didn't already cover — otherwise
+  // it's just re-describing the same flips.
+  const plusHasExtra = [...plusFlipIndices].some(i => !sameFlipIndices.has(i));
+  const upHasExtra = [...upFlipIndices].some(i => !sameFlipIndices.has(i) && !plusFlipIndices.has(i));
+
+  return { same: sameHit, plus: plusHit, plusHasExtra, up: upHit, upHasExtra, combo: chainAddedMore };
+}
+
+function flipCells(indices, newOwner) {
+  indices.forEach(i => {
+    if (state.board[i] && state.board[i].owner !== newOwner) {
+      // Keep showing the old owner's color until the flip actually plays
+      // (see placeCard) — only the game-logic owner changes right away.
+      state.board[i]._displayOwner = state.board[i].owner;
+      state.board[i].owner = newOwner;
+      state.board[i]._justFlipped = true;
+    }
+  });
+}
+
+function checkGameEnd() {
+  if (state.board.every(c => c !== null)) state.gameOver = true;
+}
+
+function boardCount(owner) {
+  // Cells awaiting their flip reveal still count toward their displayed
+  // (pre-flip) owner, so the score doesn't update ahead of the animation.
+  return state.board.filter(c => c && (c._displayOwner || c.owner) === owner).length;
+}
+
+function totalScore(owner) {
+  return boardCount(owner) + state.hands[owner].length;
+}
+
+// ---------------------------------------------------------------
+// RENDERING
+// ---------------------------------------------------------------
+// cellIndex is only meaningful for a card sitting on the board — it's how
+// the elemental bonus/penalty for THIS specific tile gets looked up. Hand
+// cards simply omit it, so they always show their plain base stats.
+function createCardElement(card, owner, cellIndex) {
+  const el = document.createElement('div');
+  el.className = 'card ' + (owner === 'p1' ? 'blue' : 'red');
+  const elemBadge = card.element ? `<div class="elem-icon ${card.element.toLowerCase()}"></div>` : '';
+  const mod = (cellIndex === undefined || cellIndex === null) ? 0 : elementalModifier(cellIndex, card);
+  const modClass = mod > 0 ? ' val-boost' : (mod < 0 ? ' val-penalty' : '');
+  const effective = side => Math.max(1, Math.min(10, card[side] + mod));
+  el.innerHTML = `
+    <div class="hit-zone"></div>
+    <div class="card-inner">
+      <img class="art" src="${CARD_IMG_PATH}${card.image}" alt="${card.name}" draggable="false">
+      ${elemBadge}
+      <div class="val top${modClass}">${fmt(effective('top'))}</div>
+      <div class="val right${modClass}">${fmt(effective('right'))}</div>
+      <div class="val bottom${modClass}">${fmt(effective('bottom'))}</div>
+      <div class="val left${modClass}">${fmt(effective('left'))}</div>
+      <div class="label">${card.name}</div>
+    </div>
+  `;
+  return el;
+}
+
+function renderHand(owner) {
+  const container = document.getElementById(owner === 'p1' ? 'handP1' : 'handP2');
+  container.innerHTML = '';
+  state.hands[owner].forEach((card, idx) => {
+    const el = createCardElement(card, owner);
+    if (state.selected && state.selected.owner === owner && state.selected.idx === idx) {
+      el.classList.add('selected');
+    }
+    if (owner !== state.turn || state.gameOver) {
+      el.classList.add('disabled');
+    } else {
+      el.addEventListener('click', () => selectCard(owner, idx));
+      el.addEventListener('mouseenter', () => {
+        if (sfxState.hoverEnabled) playSfx('cursorMove');
+      });
+    }
+    container.appendChild(el);
+  });
+}
+
+function renderBoard() {
+  const container = document.getElementById('board');
+  container.innerHTML = '';
+  state.board.forEach((cell, i) => {
+    const cellEl = document.createElement('div');
+    cellEl.className = 'cell';
+    if (cell) {
+      // Flips are triggered later, once the placement animation for this
+      // turn has finished (see placeCard) — not here, so captures don't
+      // visually flip (or change color) at the same time the placed card
+      // is still rising/falling into place. Until then, keep showing the
+      // pre-capture owner's color.
+      const cardEl = createCardElement(cell.card, cell._displayOwner || cell.owner, i);
+      if (cell._justPlaced) {
+        cardEl.classList.add('drop');
+        cell._justPlaced = false;
+      }
+      cellEl.appendChild(cardEl);
+    } else {
+      if (state.selected && !state.gameOver) {
+        cellEl.classList.add('empty-selectable');
+      }
+      cellEl.addEventListener('click', () => placeCard(i));
+      // Elemental rule: mark this tile's element while it's still empty —
+      // once a card is placed here it covers the icon anyway.
+      if (state.rules.elemental && state.boardElements[i]) {
+        const tileIcon = document.createElement('div');
+        tileIcon.className = `elem-icon ${state.boardElements[i].toLowerCase()}`;
+        cellEl.appendChild(tileIcon);
+      }
+    }
+    container.appendChild(cellEl);
+  });
+}
+
+function updateScores() {
+  document.getElementById('scoreP1').textContent = 'P1: ' + totalScore('p1');
+  document.getElementById('scoreP2').textContent = 'P2: ' + totalScore('p2');
+}
+
+function updateTurnIndicator() {
+  const el = document.getElementById('turnIndicator');
+  el.textContent = state.gameOver ? 'Game over' : (state.turn === 'p1' ? "Player 1's turn" : "Player 2's turn");
+}
+
+function updateOverlay() {
+  const overlay = document.getElementById('overlay');
+  // Suppressed while flip/banner animations from the final move are still
+  // playing — placeCard calls this again once they're done.
+  if (!state.gameOver || state.suppressOverlay) { overlay.classList.remove('show'); return; }
+  const p1 = totalScore('p1'), p2 = totalScore('p2');
+  // Graphic + text are both from Player 1's perspective, as the main player.
+  const result = p1 === p2 ? 'draw' : (p1 > p2 ? 'win' : 'lose');
+  const text = result === 'draw' ? "It's a draw!" : (result === 'win' ? 'Player 1 wins!' : 'Player 2 wins!');
+  const graphic = document.getElementById('overlayGraphic');
+  graphic.src = RESULT_GRAPHICS[result];
+  graphic.classList.add('show');
+  document.getElementById('overlayText').textContent = `${text} (${p1} - ${p2})`;
+  overlay.classList.add('show');
+}
+
+function renderAll() {
+  renderHand('p1');
+  renderHand('p2');
+  renderBoard();
+  updateScores();
+  updateTurnIndicator();
+  updateOverlay();
+}
+
+// ---------------------------------------------------------------
+// MUSIC PLAYER
+// Tracks found in the Music/ folder next to this file. Add more
+// entries here (name + relative path) whenever you drop new files in.
+// ---------------------------------------------------------------
+const MUSIC_TRACKS = [
+  { name: "Shuffle or Boogie", file: "Music/Shuffle or Boogie.mp3" },
+  { name: "Tetra Master", file: "Music/Tetra Master.mp3" },
+];
+
+function initMusicPlayer() {
+  const select = document.getElementById('musicSelect');
+  const audio = document.getElementById('bgAudio');
+  const playBtn = document.getElementById('musicPlayBtn');
+  const autoplayToggle = document.getElementById('autoplayToggle');
+  const volumeSelect = document.getElementById('volumeSelect');
+
+  MUSIC_TRACKS.forEach((track, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = track.name;
+    select.appendChild(opt);
+  });
+
+  for (let v = 5; v <= 100; v += 5) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v + '%';
+    if (v === 10) opt.selected = true;
+    volumeSelect.appendChild(opt);
+  }
+  audio.volume = 0.10;
+  volumeSelect.addEventListener('change', () => {
+    audio.volume = Number(volumeSelect.value) / 100;
+  });
+
+  function loadTrack(idx, tryPlay) {
+    audio.src = MUSIC_TRACKS[idx].file;
+    if (tryPlay) {
+      audio.play().catch(() => {});
+    }
+  }
+
+  select.addEventListener('change', () => {
+    loadTrack(select.value, !audio.paused);
+  });
+
+  playBtn.addEventListener('click', () => {
+    if (audio.paused) {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  });
+
+  autoplayToggle.addEventListener('change', () => {
+    if (autoplayToggle.checked && audio.paused) {
+      audio.play().catch(() => {});
+    }
+  });
+
+  audio.addEventListener('play', () => { playBtn.textContent = '⏸ Pause'; });
+  audio.addEventListener('pause', () => { playBtn.textContent = '▶ Play'; });
+
+  // Autoplay is opt-in and unchecked by default; browsers block audio
+  // until the user interacts with the page anyway, so this just loads
+  // the default track without attempting to play it.
+  loadTrack(0, autoplayToggle.checked);
+}
+
+// ---------------------------------------------------------------
+// RULE / RESULT GRAPHICS (from Cards/FF8/icons/text/)
+// ---------------------------------------------------------------
+const RULE_BANNERS = {
+  same: "Cards/FF8/icons/text/same.png",
+  plus: "Cards/FF8/icons/text/plus.png",
+  combo: "Cards/FF8/icons/text/combo.png",
+  up: "Cards/FF8/icons/text/up.png",
+};
+const RESULT_GRAPHICS = {
+  win: "Cards/FF8/icons/text/you_win.png",
+  lose: "Cards/FF8/icons/text/you_lose.png",
+  draw: "Cards/FF8/icons/text/draw.png",
+};
+
+function showRuleBanner(name) {
+  return new Promise(resolve => {
+    const el = document.getElementById('ruleBanner');
+    el.src = RULE_BANNERS[name];
+    el.classList.add('show');
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(resolve, 200); // let the fade-out transition finish
+    }, 650);
+  });
+}
+
+// ---------------------------------------------------------------
+// SOUND EFFECTS
+// ---------------------------------------------------------------
+const SFX = {
+  cardFlip: "Sound/Card Flip.wav",
+  cardPlace: "Sound/Card Placing.wav",
+  cursorMove: "Sound/Cursor Move.wav",
+  cursorCancel: "Sound/Cursor Cancel.wav",
+};
+
+const sfxState = { enabled: true, volume: 0.1, hoverEnabled: false };
+
+// Browsers refuse to play any audio (including hover SFX) until the page
+// has received one genuine "activation" gesture — a real click, keypress,
+// or touch. Hovering doesn't count, so the very first hover of a session
+// is silent no matter what. Priming playback on the first click/keydown
+// ANYWHERE on the page (not just a card click) unlocks it as early as
+// possible, so hover SFX works from the next hover onward.
+function unlockSfxPlayback() {
+  const primer = new Audio(SFX.cursorMove);
+  primer.volume = 0;
+  primer.play().catch(() => {});
+}
+window.addEventListener('pointerdown', unlockSfxPlayback, { once: true, capture: true });
+window.addEventListener('keydown', unlockSfxPlayback, { once: true, capture: true });
+
+function initSfxControls() {
+  const toggle = document.getElementById('sfxToggle');
+  const hoverToggle = document.getElementById('sfxHoverToggle');
+  const volumeSelect = document.getElementById('sfxVolumeSelect');
+  if (!toggle || !volumeSelect) return;
+
+  for (let v = 5; v <= 100; v += 5) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v + '%';
+    if (v === 10) opt.selected = true;
+    volumeSelect.appendChild(opt);
+  }
+
+  toggle.checked = sfxState.enabled;
+  if (hoverToggle) hoverToggle.checked = sfxState.hoverEnabled;
+  volumeSelect.addEventListener('change', () => {
+    sfxState.volume = Number(volumeSelect.value) / 100;
+  });
+  toggle.addEventListener('change', () => {
+    sfxState.enabled = toggle.checked;
+  });
+  if (hoverToggle) {
+    hoverToggle.addEventListener('change', () => {
+      sfxState.hoverEnabled = hoverToggle.checked;
+    });
+  }
+}
+
+function playSfx(name) {
+  if (!sfxState.enabled) return;
+  const src = SFX[name];
+  if (!src) return;
+  const audio = new Audio(src);
+  audio.volume = sfxState.volume;
+  audio.play().catch(() => {});
+}
+
+// ---------------------------------------------------------------
+// WIRING
+// ---------------------------------------------------------------
+document.getElementById('ruleSame').addEventListener('change', e => { state.rules.same = e.target.checked; });
+document.getElementById('rulePlus').addEventListener('change', e => { state.rules.plus = e.target.checked; });
+document.getElementById('ruleUp').addEventListener('change', e => { state.rules.up = e.target.checked; });
+document.getElementById('ruleCombo').addEventListener('change', e => { state.rules.combo = e.target.checked; });
+document.getElementById('ruleElemental').addEventListener('change', e => {
+  state.rules.elemental = e.target.checked;
+  // If turning the rule on mid-game and no tiles have elements yet, assign
+  // some now — only to cells that are still empty
