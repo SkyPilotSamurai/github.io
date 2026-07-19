@@ -571,11 +571,23 @@ function initGame() {
 
 function selectCard(owner, idx) {
   if (state.gameOver || owner !== state.turn) return;
+  // renderAll() below tears down and rebuilds every hand card element,
+  // including the one currently under the cursor. Browsers can synthesize
+  // a fresh mouseenter on that replacement element even though the mouse
+  // never actually moved, which would re-trigger the hover SFX right after
+  // this click and sound like a double-up. Suppress hover SFX for one tick
+  // so that phantom re-hover is ignored.
+  suppressHoverSfx = true;
+  requestAnimationFrame(() => { suppressHoverSfx = false; });
   if (state.selected && state.selected.owner === owner && state.selected.idx === idx) {
     state.selected = null;
     playSfx('cursorCancel');
   } else {
     state.selected = { owner, idx };
+    // Always plays its own confirm sound on click, regardless of hover SFX —
+    // the suppressHoverSfx guard above (and in the mouseenter handler) is
+    // what stops the DOM-rebuild phantom re-hover from ALSO firing right
+    // after this, so the two don't stack into an unwanted double-up.
     playSfx('cursorMove');
   }
   renderAll();
@@ -855,7 +867,11 @@ function renderHand(owner) {
     } else {
       el.addEventListener('click', () => selectCard(owner, idx));
       el.addEventListener('mouseenter', () => {
-        if (sfxState.hoverEnabled) playSfx('cursorMove');
+        if (suppressHoverSfx) return;
+        if (sfxState.hoverEnabled) {
+          playSfx('cursorMove');
+          lastHoverPlayedKey = owner + '-' + idx;
+        }
       });
     }
     container.appendChild(el);
@@ -1040,6 +1056,18 @@ const SFX = {
 };
 
 const sfxState = { enabled: true, volume: 0.1, hoverEnabled: false };
+
+// Set true for one animation frame around any click-triggered re-render, so
+// the phantom mouseenter that fires when a hovered card's DOM element gets
+// replaced out from under the cursor doesn't double up the hover SFX.
+let suppressHoverSfx = false;
+
+// Tracks which card ("owner-idx") most recently played the hover SFX for
+// real (not a phantom re-hover), so a click right after that exact hover
+// can skip its own sound without going silent for clicks that DIDN'T just
+// follow a real hover on that card (e.g. a card becoming selectable after
+// a turn switch while the mouse sits still on it).
+let lastHoverPlayedKey = null;
 
 // Browsers refuse to play any audio (including hover SFX) until the page
 // has received one genuine "activation" gesture — a real click, keypress,
