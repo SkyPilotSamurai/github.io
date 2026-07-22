@@ -1,0 +1,17 @@
+{
+  "name": "triple-triad",
+  "version": "1.0.0",
+  "description": "",
+  "main": "_test_logic.js",
+  "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
+    "acorn": "^8.17.0",
+    "playwright": "^1.61.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
