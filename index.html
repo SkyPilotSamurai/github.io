@@ -2211,6 +2211,15 @@ function applyRoomSnapshotNow(room) {
   // attempt before this fix).
   state.hands = fromRoomHands(room.hands);
   state.turn = room.turn || 'p1';
+  // Catches a rematch actually restarting the game — the reset write
+  // flips room.gameOver back to false, which every client (not just the
+  // one who wrote the reset) picks up right here. See
+  // restorePreviousMusicIfNeeded's own comment: rematch is the other of
+  // the two ways victory music is supposed to end (leaving the room being
+  // the first — see leaveOnlineRoomOrSpectate). Checked BEFORE
+  // overwriting state.gameOver below, so this only fires on the actual
+  // true-to-false transition, not on every already-settled snapshot.
+  if (state.gameOver && !room.gameOver) restorePreviousMusicIfNeeded();
   state.gameOver = !!room.gameOver;
   if (room.rules) state.rules = room.rules;
   // See the matching comment in the isNewMove branch above — settle the
@@ -2599,6 +2608,10 @@ function leaveOnlineRoomOrSpectate() {
   stopTurnTimer();
   stopDisplayTimerInterval();
   hideWaitingForOpponent();
+  // See restorePreviousMusicIfNeeded's own comment — "leave the room" is
+  // one of the two ways victory music is supposed to end. No-ops if it
+  // was never actually playing.
+  restorePreviousMusicIfNeeded();
   state.mode = 'practice';
   state.roomId = null;
   state.seat = null;
@@ -3532,6 +3545,10 @@ function updateOverlay() {
   const myScore = mySeat === 'p1' ? p1 : p2;
   const theirScore = mySeat === 'p1' ? p2 : p1;
   const result = p1 === p2 ? 'draw' : (myScore > theirScore ? 'win' : 'lose');
+  // maybeStartVictoryMusic() is self-guarding (see its own comment) — safe
+  // to call on every one of updateOverlay()'s re-runs while the overlay is
+  // up, not just the first, without restarting/stacking the track.
+  maybeStartVictoryMusic(result);
   const winnerLabel = p1 === p2 ? null : (p1 > p2 ? 'Player 1' : 'Player 2');
   const text = result === 'draw' ? "It's a draw!" :
     (state.mode === 'online' ? (result === 'win' ? 'You win!' : 'You lose...') : `${winnerLabel} wins!`);
@@ -3812,6 +3829,96 @@ function tryStartMusicIfEnabled() {
   const autoplayToggle = document.getElementById('autoplayToggle');
   if (audio && autoplayToggle && autoplayToggle.checked && audio.paused) {
     audio.play().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------
+// VICTORY MUSIC — online wins only. Deliberately NOT one of MUSIC_TRACKS
+// (no manual-select option in the dropdown) — it's an automatic override
+// that takes over #bgAudio's src on a win and hands it back afterward,
+// not a track a player would pick to just listen to.
+// ---------------------------------------------------------------
+const VICTORY_TRACK_FILE = "Music/Victory.mp3";
+
+// Remembers what #bgAudio was doing right before victory music took over
+// (which track, and whether it was actually playing) — null whenever
+// victory music ISN'T currently active, which doubles as the "is it
+// active right now" flag itself (see maybeStartVictoryMusic's own guard).
+// Restored via restorePreviousMusicIfNeeded(), which starts the track
+// back over from the beginning (not wherever it left off) — if nothing
+// was playing before (paused, or autoplay off), it correctly stays
+// silent afterward too instead of unexpectedly starting playback.
+let preVictoryMusicState = null;
+
+// Called from updateOverlay() on every one of its re-runs while the
+// overlay is up (updateOverlay() itself re-runs on every renderAll()) —
+// self-guarded via preVictoryMusicState below rather than needing the
+// call site to track "is this the first time" separately, so it only
+// ever actually swaps the track in once per win. Only swaps in
+// Victory.mp3 for an ONLINE win specifically (not a loss, draw, or
+// practice/spectate game) — "if a player wins a game online" was the
+// exact ask, not every game-over screen.
+function maybeStartVictoryMusic(result) {
+  if (state.mode !== 'online' || result !== 'win') return;
+  if (preVictoryMusicState) return; // already active, don't stack/restart it
+  const audio = document.getElementById('bgAudio');
+  const select = document.getElementById('musicSelect');
+  if (!audio || !select) return;
+  preVictoryMusicState = {
+    src: audio.src,
+    selectValue: select.value,
+    wasPlaying: !audio.paused,
+  };
+  audio.src = VICTORY_TRACK_FILE;
+  audio.currentTime = 0;
+  // Same volume the regular tracks use (see applyVolume in initMusicPlayer)
+  // — gain 1 since Victory.mp3 isn't one of MUSIC_TRACKS and has no
+  // per-track gain entry of its own, matching how an un-gained track would
+  // sound. Re-reads the Volume setting live rather than caching it, so it
+  // still tracks the Volume slider exactly like every other track does
+  // while it's playing.
+  const volumeSelect = document.getElementById('volumeSelect');
+  audio.volume = volumeSelect ? Math.min(1, Math.max(0, Number(volumeSelect.value) / 100)) : 1;
+  audio.play().catch(() => {});
+}
+
+// Called on room leave (leaveOnlineRoomOrSpectate) and on a rematch
+// actually restarting the game (the bothWantRematch reset branch in
+// handleOnlineRoomSnapshot) — the two ways "this ends" per the original
+// ask. Does nothing if victory music was never active (preVictoryMusicState
+// is null), so it's always safe to call unconditionally from both spots
+// rather than needing each call site to first check whether it applies.
+function restorePreviousMusicIfNeeded() {
+  if (!preVictoryMusicState) return;
+  const audio = document.getElementById('bgAudio');
+  const select = document.getElementById('musicSelect');
+  const saved = preVictoryMusicState;
+  preVictoryMusicState = null; // clear first — restoring below must not re-trigger this
+  if (!audio) return;
+  if (select) select.value = saved.selectValue;
+  audio.src = saved.src;
+  // Starts over from the beginning rather than resuming wherever it left
+  // off — simpler and reads better than picking back up mid-track after
+  // a game just ended.
+  audio.currentTime = 0;
+  // Restore the volume the regular tracks would compute for whatever
+  // track this is (its own gain, not Victory.mp3's gain-1 default) — same
+  // math as applyVolume() in initMusicPlayer, duplicated here rather than
+  // calling it directly since that closure isn't reachable from outside
+  // initMusicPlayer.
+  const volumeSelect = document.getElementById('volumeSelect');
+  if (volumeSelect) {
+    const track = MUSIC_TRACKS[Number(saved.selectValue)];
+    const gain = (track && track.gain) || 1;
+    audio.volume = Math.min(1, Math.max(0, (Number(volumeSelect.value) / 100) * gain));
+  }
+  // If nothing was actually playing before (paused, or autoplay simply
+  // off), stay silent — only resume if the previous track genuinely was
+  // mid-playback when victory music took over.
+  if (saved.wasPlaying) {
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
   }
 }
 
